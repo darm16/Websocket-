@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Video Streaming con Inferencias</title>
+    <link rel="stylesheet" href="static/css/index.css">
+</head>
+
+<body>
+    <h2>Video en Tiempo Real con Inferencias</h2>
+    <video id="video" autoplay playsinline></video>
+    <canvas id="canvas" style="display:none;"></canvas>
+    <img id="output" alt="Inferencias de video" style="width:400px;">
+
+    <script>
+        const video = document.getElementById('video');
+        const canvas = document.getElementById('canvas');
+        const output = document.getElementById('output');
+        const ctx = canvas.getContext('2d');
+        let websocket;
+
+        // Acceder a la cámara del móvil
+        navigator.mediaDevices.getUserMedia({ video: true })
+            .then(stream => {
+                video.srcObject = stream;
+
+                // Esto te hacia falta, esto espera a que la imagen esté lista para enviar.
+                video.addEventListener('loadedmetadata', () => {
+                    canvas.width = video.videoWidth;
+                    canvas.height = video.videoHeight;
+                    console.log("Dimensiones del canvas establecidas: ", canvas.width, canvas.height);
+                });
+
+                // Conectar con el WebSocket del servidor
+                websocket = new WebSocket("ws://192.168.1.33:8080/ws");
+
+                websocket.onmessage = function (event) {
+                    let blob = new Blob([event.data], { type: 'image/jpeg' });
+                    let url = URL.createObjectURL(blob);
+                    output.src = url;
+                    console.log("Imagen recibida y mostrada en el móvil");
+                };
+
+                // Enviar frames de video al servidor cada 100ms
+                setInterval(() => {
+                    if (canvas.width > 0 && canvas.height > 0) {
+                        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+                        console.log("dibujado");
+
+                        canvas.toBlob(blob => {
+                            if (blob) { 
+                                if (websocket.readyState === WebSocket.OPEN) {
+                                    const reader = new FileReader();
+                                    reader.onload = () => {
+                                        websocket.send(reader.result);
+                                    };
+                                    reader.readAsArrayBuffer(blob); 
+                                } else {
+                                    console.error("WebSocket no está abierto");
+                                }
+                            } else {
+                                console.error("No se pudo crear el Blob");
+                            }
+                        }, 'image/jpeg');
+                    } else {
+                        console.error("El canvas está vacío o no tiene contenido");
+                    }
+                }, 500);
+            })
+            .catch(error => console.error("Error al acceder a la cámara: ", error));
+
+    </script>
+</body>
+
+</html>
